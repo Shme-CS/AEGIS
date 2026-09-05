@@ -34,6 +34,7 @@ class ProjectLifecycleAuthorizationTest extends TestCase
     public function test_a_student_who_does_not_lead_the_project_cannot_submit_it(): void
     {
         [$project] = $this->project('draft');
+
         $otherStudent = User::factory()->create([
             'program_id' => $project->program_id,
         ]);
@@ -46,6 +47,7 @@ class ProjectLifecycleAuthorizationTest extends TestCase
     public function test_only_a_supervisor_in_the_project_program_can_start_review(): void
     {
         [$project] = $this->project('submitted');
+
         $supervisor = User::factory()->create([
             'program_id' => $project->program_id,
             'role' => User::ROLE_SUPERVISOR,
@@ -59,6 +61,7 @@ class ProjectLifecycleAuthorizationTest extends TestCase
     public function test_supervisor_from_another_program_cannot_start_review(): void
     {
         [$project] = $this->project('submitted');
+
         $supervisor = User::factory()->create([
             'program_id' => $this->createProgram()->id,
             'role' => User::ROLE_SUPERVISOR,
@@ -72,6 +75,7 @@ class ProjectLifecycleAuthorizationTest extends TestCase
     public function test_a_supervisor_can_approve_or_request_revision(): void
     {
         [$project] = $this->project('under_review');
+
         $supervisor = User::factory()->create([
             'program_id' => $project->program_id,
             'role' => User::ROLE_SUPERVISOR,
@@ -84,8 +88,13 @@ class ProjectLifecycleAuthorizationTest extends TestCase
         $sameProgramLeader = User::factory()->create([
             'program_id' => $project->program_id,
         ]);
+
         [$revisionProject] = $this->project('under_review', $sameProgramLeader);
-        $revised = app(ProjectLifecycleService::class)->requestRevision($revisionProject, $supervisor);
+
+        $revised = app(ProjectLifecycleService::class)->requestRevision(
+            $revisionProject,
+            $supervisor
+        );
 
         $this->assertSame('draft', $revised->status);
     }
@@ -93,6 +102,7 @@ class ProjectLifecycleAuthorizationTest extends TestCase
     public function test_coordinator_from_same_program_cannot_approve_a_project(): void
     {
         [$project] = $this->project('under_review');
+
         $coordinator = User::factory()->create([
             'program_id' => $project->program_id,
             'role' => User::ROLE_COORDINATOR,
@@ -106,6 +116,7 @@ class ProjectLifecycleAuthorizationTest extends TestCase
     public function test_a_supervisor_can_complete_a_final_submission(): void
     {
         [$project] = $this->project('submitted_final');
+
         $supervisor = User::factory()->create([
             'program_id' => $project->program_id,
             'role' => User::ROLE_SUPERVISOR,
@@ -119,6 +130,7 @@ class ProjectLifecycleAuthorizationTest extends TestCase
     public function test_a_coordinator_can_archive_a_completed_project(): void
     {
         [$project] = $this->project('completed');
+
         $coordinator = User::factory()->create([
             'program_id' => $project->program_id,
             'role' => User::ROLE_COORDINATOR,
@@ -132,6 +144,7 @@ class ProjectLifecycleAuthorizationTest extends TestCase
     public function test_inactive_supervisor_cannot_review_project(): void
     {
         [$project] = $this->project('submitted');
+
         $supervisor = User::factory()->create([
             'program_id' => $project->program_id,
             'role' => User::ROLE_SUPERVISOR,
@@ -146,6 +159,7 @@ class ProjectLifecycleAuthorizationTest extends TestCase
     public function test_an_active_administrator_can_transition_any_project(): void
     {
         [$project] = $this->project('submitted');
+
         $administrator = User::factory()->create([
             'role' => User::ROLE_ADMIN,
             'program_id' => null,
@@ -156,13 +170,52 @@ class ProjectLifecycleAuthorizationTest extends TestCase
         $this->assertSame('under_review', $updated->status);
     }
 
+    public function test_an_active_student_can_create_a_project(): void
+    {
+        $student = User::factory()->create([
+            'role' => User::ROLE_STUDENT,
+            'status' => 'active',
+        ]);
+
+        $this->assertTrue(
+            $student->can('create', Project::class)
+        );
+    }
+
+    public function test_an_inactive_student_cannot_create_a_project(): void
+    {
+        $student = User::factory()->create([
+            'role' => User::ROLE_STUDENT,
+            'status' => 'inactive',
+        ]);
+
+        $this->assertFalse(
+            $student->can('create', Project::class)
+        );
+    }
+
+    public function test_a_supervisor_cannot_create_a_project(): void
+    {
+        $supervisor = User::factory()->create([
+            'role' => User::ROLE_SUPERVISOR,
+            'status' => 'active',
+        ]);
+
+        $this->assertFalse(
+            $supervisor->can('create', Project::class)
+        );
+    }
+
     /**
      * @return array{0: Project, 1: User}
      */
     private function project(string $status, ?User $leader = null): array
     {
         $program = $leader?->program ?? $this->createProgram();
-        $leader ??= User::factory()->create(['program_id' => $program->id]);
+
+        $leader ??= User::factory()->create([
+            'program_id' => $program->id,
+        ]);
 
         $project = Project::query()->create([
             'program_id' => $program->id,
@@ -182,6 +235,7 @@ class ProjectLifecycleAuthorizationTest extends TestCase
             'name' => 'College '.uniqid(),
             'code' => 'C'.uniqid(),
         ]);
+
         $department = Department::query()->create([
             'college_id' => $college->id,
             'name' => 'Department '.uniqid(),

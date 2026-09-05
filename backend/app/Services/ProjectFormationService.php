@@ -8,6 +8,7 @@ use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class ProjectFormationService
@@ -44,20 +45,31 @@ class ProjectFormationService
         $academicYear = $attributes['academic_year'] ?? null;
 
         if (! is_int($programId) && ! ctype_digit((string) $programId)) {
-            throw ValidationException::withMessages(['program_id' => 'A program is required.']);
+            throw ValidationException::withMessages([
+                'program_id' => 'A program is required.',
+            ]);
         }
 
         if (! is_string($academicYear) || $academicYear === '') {
-            throw ValidationException::withMessages(['academic_year' => 'An academic year is required.']);
+            throw ValidationException::withMessages([
+                'academic_year' => 'An academic year is required.',
+            ]);
         }
 
         $memberIds = array_values(array_unique(array_map('intval', $memberIds)));
+
         $memberIds = array_values(array_filter(
             $memberIds,
             fn (int $memberId): bool => $memberId !== $leader->getKey(),
         ));
 
-        return DB::transaction(function () use ($leader, $attributes, $memberIds, $programId, $academicYear): Project {
+        return DB::transaction(function () use (
+            $leader,
+            $attributes,
+            $memberIds,
+            $programId,
+            $academicYear
+        ): Project {
             $students = User::query()
                 ->whereIn('id', [$leader->getKey(), ...$memberIds])
                 ->orderBy('id')
@@ -65,13 +77,18 @@ class ProjectFormationService
                 ->get()
                 ->keyBy('id');
 
-            $this->ensureEligibleStudents($students->all(), $leader, (int) $programId, $academicYear, $memberIds);
+            $this->ensureEligibleStudents(
+                $students->all(),
+                $leader,
+                (int) $programId,
+                $academicYear,
+                $memberIds,
+            );
 
             $project = Project::query()->create([
                 ...Arr::only($attributes, [
                     'program_id',
                     'title',
-                    'slug',
                     'abstract',
                     'project_type',
                     'academic_year',
@@ -81,8 +98,13 @@ class ProjectFormationService
                     'completed_at',
                     'version',
                 ]),
+
                 'program_id' => (int) $programId,
+
                 'student_id' => $leader->getKey(),
+
+                // Generate the slug automatically from the project title.
+                'slug' => Str::slug($attributes['title']),
             ]);
 
             $project->memberships()->createMany([
@@ -92,15 +114,22 @@ class ProjectFormationService
                     'status' => 'active',
                     'joined_at' => now(),
                 ],
-                ...array_map(fn (int $memberId): array => [
-                    'user_id' => $memberId,
-                    'role' => 'member',
-                    'status' => 'active',
-                    'joined_at' => now(),
-                ], $memberIds),
+
+                ...array_map(
+                    fn (int $memberId): array => [
+                        'user_id' => $memberId,
+                        'role' => 'member',
+                        'status' => 'active',
+                        'joined_at' => now(),
+                    ],
+                    $memberIds,
+                ),
             ]);
 
-            return $project->load(['leader', 'memberships.user']);
+            return $project->load([
+                'leader',
+                'memberships.user',
+            ]);
         });
     }
 
@@ -118,18 +147,24 @@ class ProjectFormationService
         $requiredIds = [$leader->getKey(), ...$memberIds];
 
         if (count($students) !== count($requiredIds)) {
-            throw ValidationException::withMessages(['members' => 'One or more selected students do not exist.']);
+            throw ValidationException::withMessages([
+                'members' => 'One or more selected students do not exist.',
+            ]);
         }
 
         foreach ($requiredIds as $studentId) {
             $student = $students[$studentId];
 
             if ($student->status !== 'active') {
-                throw ValidationException::withMessages(['members' => 'Only active students may form or join a project.']);
+                throw ValidationException::withMessages([
+                    'members' => 'Only active students may form or join a project.',
+                ]);
             }
 
             if ((int) $student->program_id !== $programId) {
-                throw ValidationException::withMessages(['members' => 'All project members must belong to the project program.']);
+                throw ValidationException::withMessages([
+                    'members' => 'All project members must belong to the project program.',
+                ]);
             }
         }
 

@@ -44,4 +44,40 @@ class UserFactory extends Factory
             'email_verified_at' => null,
         ]);
     }
+
+    public function inactive(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'status' => 'inactive',
+        ]);
+    }
+
+    public function student(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'role' => User::ROLE_STUDENT,
+        ]);
+    }
+
+    public function supervisor(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'role' => User::ROLE_SUPERVISOR,
+        ]);
+    }
+
+    public function coordinator(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'role' => User::ROLE_COORDINATOR,
+        ]);
+    }
+
+    public function administrator(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'role' => User::ROLE_ADMIN,
+            'program_id' => null,
+        ]);
+    }
 }
